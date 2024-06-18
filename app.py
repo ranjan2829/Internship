@@ -1,18 +1,8 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for
 import cv2
 import os
-import firebase_admin
-from firebase_admin import credentials, storage, firestore
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-
-# Initialize Firebase
-cred = credentials.Certificate('serviceAccountKey.json')
-firebase_admin.initialize_app(cred, {
-    'storageBucket': 'your-bucket-name.appspot.com'
-})
-db = firestore.client()
-bucket = storage.bucket()
 
 @app.route('/')
 def index():
@@ -29,14 +19,14 @@ def generate_certificate():
     if len(candidate_name) > 20:
         return jsonify({"error": "Name must be 20 characters or less"}), 400
     
-    certificate_url = create_certificate(candidate_name, email)
+    certificate_url = create_certificate(candidate_name)
     
     return redirect(url_for('view_certificate', certificate_url=certificate_url))
 
 def add_name_to_certificate(candidate_name):
     cert_template_path = 'sample_certificate.png'
     if not os.path.exists(cert_template_path):
-        raise FileNotFoundError("Certificate template not found")
+        raise FileNotFoundError(f"Certificate template not found at {cert_template_path}")
     
     cert_template = cv2.imread(cert_template_path)
     if cert_template is None:
@@ -52,27 +42,17 @@ def add_name_to_certificate(candidate_name):
 
     cv2.putText(cert_template, candidate_name, (x_position, y_position), font, font_size, font_color, 2)
     
-    output_dir = 'output'
+    output_dir = 'static/output'
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f'{candidate_name}.png')
     cv2.imwrite(output_path, cert_template)
     return output_path
 
-def create_certificate(candidate_name, email):
+def create_certificate(candidate_name):
     certificate_path = add_name_to_certificate(candidate_name)
     
-    blob = bucket.blob(f'certificates/{candidate_name}.png')
-    blob.upload_from_filename(certificate_path)
-    blob.make_public()
-    certificate_url = blob.public_url
-    
-    db.collection('certificates').add({
-        'name': candidate_name,
-        'email': email,
-        'certificate_url': certificate_url
-    })
-    
-    os.remove(certificate_path)
+    # Assuming certificates are accessible under the static directory
+    certificate_url = url_for('static', filename=f'output/{candidate_name}.png', _external=True)
     
     return certificate_url
 
